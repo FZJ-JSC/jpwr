@@ -34,7 +34,7 @@ jpwr - JSC power measurement tool
 ```
 cd jpwr
 python -m build
-pip install dist/jwpr-0.0.8-py3-none-any.whl\[pynvml,mpi\]
+pip install dist/jwpr-0.0.10-py3-none-any.whl\[pynvml,mpi\]
 ```
 
 ## CLI tool usage examples
