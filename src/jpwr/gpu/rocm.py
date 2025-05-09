@@ -60,11 +60,13 @@ class power(object):
             self.start_energy_list.append(round(energy.value*energy_resolution.value,2)) # unit is uJ
     def measure(self, power_value_dict : dict[str,list[float]]):
         for id in self.device_list:
-            power = c_uint32()
+            power = c_uint64()
+            ptype = c_int()
+
             if not self.dev_pwr_map[id]:
                 power.value = 0
             else:
-                ret = self.rocmsmi.rsmi_dev_power_ave_get(id, 0, byref(power))
+                ret = self.rocmsmi.rsmi_dev_power_get(id, byref(power), byref(ptype))
                 if rsmi_status_t.RSMI_STATUS_SUCCESS != ret:
                     raise RuntimeError(f"Failed getting power of device {id}: {ret}")
             power_value_dict[f"rocm:{id}"].append(float(power.value)*1e-6) # value is uW
