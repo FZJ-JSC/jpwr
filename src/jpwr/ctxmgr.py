@@ -29,7 +29,7 @@ def power_loop(queue, event, interval, power_methods, options):
             not_timestamps = [k for k in power_value_dict if k != "timestamps"]
             for key in not_timestamps:
                 power_value_dict[key] = power_value_dict[key][:keep_values_upto]
-            if not options['ignore_measure_errors']:
+            if not options.get('ignore_measure_errors', False):
                 raise RuntimeError("Measurement error")
         wait_for = max(0,1e-3*interval-(timestamp-last_timestamp))
         time.sleep(wait_for)

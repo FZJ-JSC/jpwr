@@ -19,6 +19,7 @@ from multiprocessing import Process, Queue, Event
 class power(object):
     def init(self, power_value_dict : dict[str,list[float]]):
         init_bindings_required = True
+        self.energy_counter = True
         try:
             with open(os.path.join(rocm_path,'.info/version'), 'r') as vfile:
                 vstr = vfile.readline()
@@ -44,45 +45,61 @@ class power(object):
         })
         self.dev_pwr_map = { id: True for id in self.device_list }
         self.start_energy_list = []
-        for id in self.device_list:
-            energy = c_uint64()
-            energy_timestamp = c_uint64()
-            energy_resolution = c_float()
-            ret = self.rocmsmi.rsmi_dev_energy_count_get(id, 
-                    byref(energy),
-                    byref(energy_resolution),
-                    byref(energy_timestamp))
+        energy = c_uint64()
+        energy_timestamp = c_uint64()
+        energy_resolution = c_float()
+        ret = self.rocmsmi.rsmi_dev_energy_count_get(self.device_list[0], 
+                byref(energy),
+                byref(energy_resolution),
+                byref(energy_timestamp))
 
-            if rsmi_status_t.RSMI_STATUS_SUCCESS != ret:
-                raise RuntimeError(f"Failed getting energy of device {id}: {ret}")
-            if 0 == energy.value:
-                self.dev_pwr_map[id] = False
-            self.start_energy_list.append(round(energy.value*energy_resolution.value,2)) # unit is uJ
+        if rsmi_status_t.RSMI_STATUS_SUCCESS != ret:
+            self.energy_counter = False
+
+        if self.energy_counter:
+            for id in self.device_list:
+                energy = c_uint64()
+                energy_timestamp = c_uint64()
+                energy_resolution = c_float()
+                ret = self.rocmsmi.rsmi_dev_energy_count_get(id, 
+                        byref(energy),
+                        byref(energy_resolution),
+                        byref(energy_timestamp))
+
+                if rsmi_status_t.RSMI_STATUS_SUCCESS != ret:
+                    raise RuntimeError(f"Failed getting energy of device {id}: {ret}")
+                if 0 == energy.value:
+                    self.dev_pwr_map[id] = False
+                self.start_energy_list.append(round(energy.value*energy_resolution.value,2)) # unit is uJ
+            
     def measure(self, power_value_dict : dict[str,list[float]]):
         for id in self.device_list:
-            power = c_uint32()
+            power = c_uint64()
+            ptype = c_int()
+
             if not self.dev_pwr_map[id]:
                 power.value = 0
             else:
-                ret = self.rocmsmi.rsmi_dev_power_ave_get(id, 0, byref(power))
+                ret = self.rocmsmi.rsmi_dev_power_get(id, byref(power), byref(ptype))
                 if rsmi_status_t.RSMI_STATUS_SUCCESS != ret:
                     raise RuntimeError(f"Failed getting power of device {id}: {ret}")
             power_value_dict[f"rocm:{id}"].append(float(power.value)*1e-6) # value is uW
 
     def finalize(self, power_value_dict : dict[str,list[float]]):
         energy_list = [0.0 for _ in self.device_list]
-        for id in self.device_list:
-            energy = c_uint64()
-            energy_timestamp = c_uint64()
-            energy_resolution = c_float()
-            ret = self.rocmsmi.rsmi_dev_energy_count_get(id, 
-                    byref(energy),
-                    byref(energy_resolution),
-                    byref(energy_timestamp))
-            
-            if rsmi_status_t.RSMI_STATUS_SUCCESS != ret:
-                raise RuntimeError(f"Failed getting energy of device {id}")
-            energy_list[id] = round(energy.value*energy_resolution.value,2) - self.start_energy_list[id]
+        if self.energy_counter:
+            for id in self.device_list:
+                energy = c_uint64()
+                energy_timestamp = c_uint64()
+                energy_resolution = c_float()
+                ret = self.rocmsmi.rsmi_dev_energy_count_get(id, 
+                        byref(energy),
+                        byref(energy_resolution),
+                        byref(energy_timestamp))
+                
+                if rsmi_status_t.RSMI_STATUS_SUCCESS != ret:
+                    raise RuntimeError(f"Failed getting energy of device {id}")
+                energy_list[id] = round(energy.value*energy_resolution.value,2) - self.start_energy_list[id]
 
         energy_list = [ (energy*1e-6)/3600 for energy in energy_list] # convert uJ to Wh
         self.rocmsmi.rsmi_shut_down()
